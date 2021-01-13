@@ -32,7 +32,12 @@ def welcome():
         f"Available Routes:<br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
-        f"/api/v1.0/tobs"
+        f"/api/v1.0/tobs<br/>"
+        f"/api/v1.0/start_date<br/>"
+        f"/api/v1.0/start_date/end_date<br/>"
+        f"start_date and end_date must be in the form of yyyy-mm-dd<br/>"
+        f"example: api/v1.0/2016-08-23/2017-08-23<br/>"
+        f"available date ranges are from 2010-01-01 to 2017-08-23"
     )
 
 @app.route("/api/v1.0/precipitation")
@@ -49,7 +54,8 @@ def precipitation():
     #get date 12 months previously
     back = pd.DateOffset(months=12)
     date = date - back
-    
+    date = dt.datetime.strftime(date, '%Y-%m-%d')
+
     # Query precipitation data for the last year of data
     results = session.query(Measurement.date,Measurement.prcp).filter(Measurement.date >= str(date)).order_by(Measurement.date)
     
@@ -96,6 +102,7 @@ def tobs():
     #get date 12 months previously
     back = pd.DateOffset(months=12)
     date = date - back
+    date = dt.datetime.strftime(date, '%Y-%m-%d')
     
     # Query the temperature for the last year of the most active station
     temp = session.query(Measurement.date,Measurement.tobs).filter(Measurement.date >= str(date)).filter(Measurement.station == station_id).order_by(Measurement.date).all()
@@ -110,6 +117,50 @@ def tobs():
         all_temps.append(temp_dict)
     
     return jsonify(all_temps)
+
+@app.route("/api/v1.0/<start>/<end>")
+def time(start, end):
+    """Returns a list of the minimum, average, and max temperature for a given start-end range."""
+    # Create session link from python to DB
+    session = Session(engine)
+    
+    # Query the min, max, and average temperature for the dates specified
+    stations_temp_agg = session.query(Measurement.station, func.min(Measurement.tobs), func.max(Measurement.tobs), func.avg(Measurement.tobs)).filter(Measurement.date >= start).filter(Measurement.date <= end).group_by(Measurement.station).all()
+
+    session.close()
+    
+    agg_temps = []
+    for station, TMIN, TMAX, TAVG in stations_temp_agg:
+        temp_agg_dict = {}
+        temp_agg_dict["station"] = station
+        temp_agg_dict["TMIN"] = TMIN
+        temp_agg_dict["TMAX"] = TMAX
+        temp_agg_dict["TAVG"] = round(TAVG,1)
+        agg_temps.append(temp_agg_dict)
+    
+    return jsonify(agg_temps)
+
+@app.route("/api/v1.0/<start_date>")
+def timestart(start_date):
+    """Returns a list of the minimum, average, and max temperature for a given start date."""
+    # Create session link from python to DB
+    session = Session(engine)
+    
+    # Query the min, max, and average temperature for the dates specified
+    stations_temp_agg = session.query(Measurement.station, func.min(Measurement.tobs), func.max(Measurement.tobs), func.avg(Measurement.tobs)).filter(Measurement.date >= start_date).group_by(Measurement.station).all()
+
+    session.close()
+    
+    agg_temps = []
+    for station, TMIN, TMAX, TAVG in stations_temp_agg:
+        temp_agg_dict = {}
+        temp_agg_dict["station"] = station
+        temp_agg_dict["TMIN"] = TMIN
+        temp_agg_dict["TMAX"] = TMAX
+        temp_agg_dict["TAVG"] = round(TAVG,1)
+        agg_temps.append(temp_agg_dict)
+    
+    return jsonify(agg_temps)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80,debug=True)
